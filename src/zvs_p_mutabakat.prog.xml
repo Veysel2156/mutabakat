@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <abapGit version="v1.0.0" serializer="LCL_OBJECT_PROG" serializer_version="v1.0.0">
  <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
   <asx:values>
@@ -1909,6 +1909,12 @@
       </item>
       <item>
        <ID>I</ID>
+       <KEY>003</KEY>
+       <ENTRY>Mail Ayarları</ENTRY>
+       <LENGTH>20</LENGTH>
+      </item>
+      <item>
+       <ID>I</ID>
        <KEY>R01</KEY>
        <ENTRY>Müşteri Mutabakatı</ENTRY>
        <LENGTH>28</LENGTH>
@@ -1941,6 +1947,30 @@
        <KEY>P_MONAT</KEY>
        <ENTRY>Dönem / Ay</ENTRY>
        <LENGTH>18</LENGTH>
+      </item>
+      <item>
+       <ID>S</ID>
+       <KEY>P_IMMED</KEY>
+       <ENTRY>Hemen Gönder</ENTRY>
+       <LENGTH>18</LENGTH>
+      </item>
+      <item>
+       <ID>S</ID>
+       <KEY>P_FROM</KEY>
+       <ENTRY>Gönderen E-Posta</ENTRY>
+       <LENGTH>24</LENGTH>
+      </item>
+      <item>
+       <ID>S</ID>
+       <KEY>P_SUBJ</KEY>
+       <ENTRY>Mail Konusu</ENTRY>
+       <LENGTH>18</LENGTH>
+      </item>
+      <item>
+       <ID>S</ID>
+       <KEY>P_LIMIT</KEY>
+       <ENTRY>Üst Limit (Adet)</ENTRY>
+       <LENGTH>22</LENGTH>
       </item>
       <item>
        <ID>S</ID>
