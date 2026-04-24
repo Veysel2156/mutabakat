@@ -14,7 +14,13 @@ CLASS lcl_report DEFINITION.
       prepare_alv ,
       on_user_command FOR EVENT added_function OF cl_salv_events_table
         IMPORTING e_salv_function ,
-      send_mutabakat_mail IMPORTING is_data TYPE zvs_mut_kalem .
+      send_mutabakat_mail
+        IMPORTING
+          is_data           TYPE zvs_mut_kalem
+        EXPORTING
+          ev_error_text     TYPE string
+        RETURNING
+          VALUE(rv_success) TYPE abap_bool .
 ENDCLASS .
 *- end of -* Class Definition *-
 
@@ -27,10 +33,51 @@ CLASS lcl_report IMPLEMENTATION .
 
   METHOD set_first_status .
     " Ekran (Selection Screen) manipülasyonları
+    LOOP AT SCREEN.
+      IF r_mush = abap_true.
+        IF screen-name CP 'S_LIFNR*'.
+          screen-input = 0.
+        ELSEIF screen-name CP 'S_KUNNR*'.
+          screen-input = 1.
+        ENDIF.
+      ELSEIF r_sati = abap_true.
+        IF screen-name CP 'S_KUNNR*'.
+          screen-input = 0.
+        ELSEIF screen-name CP 'S_LIFNR*'.
+          screen-input = 1.
+        ENDIF.
+      ENDIF.
+      MODIFY SCREEN.
+    ENDLOOP.
   ENDMETHOD .
 
   METHOD at_selection_screen .
     " Kullanıcı F8'e bastığında yapılacak yetki ve giriş kontrolleri
+    AUTHORITY-CHECK OBJECT 'F_BKPF_BUK'
+      ID 'BUKRS' FIELD p_bukrs
+      ID 'ACTVT' FIELD '03'.
+    IF sy-subrc <> 0.
+      MESSAGE s000(su) WITH |{ p_bukrs } şirket kodu için görüntüleme yetkiniz yok.| DISPLAY LIKE 'E'.
+      LEAVE TO SCREEN 0.
+    ENDIF.
+
+    IF r_mush = abap_true AND s_kunnr[] IS INITIAL.
+      MESSAGE s000(su) WITH 'Müşteri seçimi için müşteri aralığı giriniz.' DISPLAY LIKE 'E'.
+      LEAVE TO SCREEN 0.
+    ENDIF.
+    IF r_sati = abap_true AND s_lifnr[] IS INITIAL.
+      MESSAGE s000(su) WITH 'Satıcı seçimi için satıcı aralığı giriniz.' DISPLAY LIKE 'E'.
+      LEAVE TO SCREEN 0.
+    ENDIF.
+
+    IF p_monat < 1 OR p_monat > 12.
+      MESSAGE s000(su) WITH 'Dönem (Ay) 01-12 aralığında olmalıdır.' DISPLAY LIKE 'E'.
+      LEAVE TO SCREEN 0.
+    ENDIF.
+    IF p_limit <= 0.
+      MESSAGE s000(su) WITH 'Üst limit 1 veya daha büyük olmalıdır.' DISPLAY LIKE 'E'.
+      LEAVE TO SCREEN 0.
+    ENDIF.
   ENDMETHOD .
 
   METHOD get_data .
@@ -38,103 +85,92 @@ CLASS lcl_report IMPLEMENTATION .
 
 *- begin of -* Müşteri Verilerini Çekme *-
     IF r_mush = 'X' .
-      " Müşteri (Açık Kalemler - BSID) okuması (Saf haliyle çekiyoruz)
-      SELECT kunnr AS cari_no ,
-             'D'   AS koart ,
-             shkzg ,
-             dmbtr ,
-             waers
+      SELECT
+        kunnr AS cari_no,
+        waers,
+        SUM(
+          CASE shkzg
+            WHEN 'S' THEN dmbtr
+            ELSE - dmbtr
+          END
+        ) AS bakiye
         FROM bsid
         WHERE bukrs = @p_bukrs
           AND kunnr IN @s_kunnr
           AND gjahr = @p_gjahr
-        INTO TABLE @DATA(lt_musteri_raw) .
+        GROUP BY kunnr, waers
+        INTO TABLE @DATA(lt_mus_bal).
 
-      " ABAP tarafında gruplama ve Bakiye hesaplama
-      LOOP AT lt_musteri_raw INTO DATA(ls_mus_raw) .
+      IF lt_mus_bal IS NOT INITIAL.
+        SELECT
+          kna1~kunnr AS cari_no,
+          adr6~smtp_addr AS mail_adres
+          FROM kna1
+          INNER JOIN adr6 ON adr6~addrnumber = kna1~adrnr
+          FOR ALL ENTRIES IN @lt_mus_bal
+          WHERE kna1~kunnr = @lt_mus_bal-cari_no
+          INTO TABLE @DATA(lt_mus_mail).
+        SORT lt_mus_mail BY cari_no.
+        DELETE ADJACENT DUPLICATES FROM lt_mus_mail COMPARING cari_no.
+      ENDIF.
 
-        " Bu müşteri zaten gt_data'ya eklendi mi diye bakıyoruz
-        READ TABLE gt_data ASSIGNING FIELD-SYMBOL(<fs_data>)
-                           WITH KEY cari_no = ls_mus_raw-cari_no
-                                    waers   = ls_mus_raw-waers .
-        IF sy-subrc <> 0 .
-          " Eklenmemişse yeni boş bir satır açıp mailini buluyoruz
-          CLEAR gs_data .
-          gs_data-cari_no = ls_mus_raw-cari_no .
-          gs_data-koart   = ls_mus_raw-koart .
-          gs_data-waers   = ls_mus_raw-waers .
-
-          SELECT SINGLE smtp_addr
-            FROM adr6
-            INNER JOIN kna1 ON kna1~adrnr = adr6~addrnumber
-            WHERE kna1~kunnr = @ls_mus_raw-cari_no
-            INTO @gs_data-mail_adres .
-
-          APPEND gs_data TO gt_data .
-
-          " Eklediğimiz satırı <fs_data> pointer'ına bağlıyoruz ki tutarı güncelleyelim
-          READ TABLE gt_data ASSIGNING <fs_data>
-                             WITH KEY cari_no = ls_mus_raw-cari_no
-                                      waers   = ls_mus_raw-waers .
-        ENDIF .
-
-        " Borç (S) ise topla, Alacak (H) ise çıkar
-        IF ls_mus_raw-shkzg = 'S' .
-          <fs_data>-bakiye = <fs_data>-bakiye + ls_mus_raw-dmbtr .
-        ELSE .
-          <fs_data>-bakiye = <fs_data>-bakiye - ls_mus_raw-dmbtr .
-        ENDIF .
-
-      ENDLOOP .
+      LOOP AT lt_mus_bal INTO DATA(ls_mus_bal).
+        CLEAR gs_data.
+        gs_data-cari_no = ls_mus_bal-cari_no.
+        gs_data-koart   = 'D'.
+        gs_data-waers   = ls_mus_bal-waers.
+        gs_data-bakiye  = ls_mus_bal-bakiye.
+        READ TABLE lt_mus_mail INTO DATA(ls_mus_mail) WITH KEY cari_no = ls_mus_bal-cari_no BINARY SEARCH.
+        IF sy-subrc = 0.
+          gs_data-mail_adres = ls_mus_mail-mail_adres.
+        ENDIF.
+        APPEND gs_data TO gt_data.
+      ENDLOOP.
 *- end of   -* Müşteri Verilerini Çekme *-
 
 *- begin of -* Satıcı Verilerini Çekme *-
     ELSEIF r_sati = 'X' .
-      " Satıcı (Açık Kalemler - BSIK) okuması
-      SELECT lifnr AS cari_no ,
-             'K'   AS koart ,
-             shkzg ,
-             dmbtr ,
-             waers
+      SELECT
+        lifnr AS cari_no,
+        waers,
+        SUM(
+          CASE shkzg
+            WHEN 'S' THEN dmbtr
+            ELSE - dmbtr
+          END
+        ) AS bakiye
         FROM bsik
         WHERE bukrs = @p_bukrs
           AND lifnr IN @s_lifnr
-     "     AND gjahr = @p_gjahr
-        INTO TABLE @DATA(lt_satici_raw) .
+          AND gjahr = @p_gjahr
+        GROUP BY lifnr, waers
+        INTO TABLE @DATA(lt_sat_bal).
 
-      " ABAP tarafında gruplama ve Bakiye hesaplama
-      LOOP AT lt_satici_raw INTO DATA(ls_sat_raw) .
+      IF lt_sat_bal IS NOT INITIAL.
+        SELECT
+          lfa1~lifnr AS cari_no,
+          adr6~smtp_addr AS mail_adres
+          FROM lfa1
+          INNER JOIN adr6 ON adr6~addrnumber = lfa1~adrnr
+          FOR ALL ENTRIES IN @lt_sat_bal
+          WHERE lfa1~lifnr = @lt_sat_bal-cari_no
+          INTO TABLE @DATA(lt_sat_mail).
+        SORT lt_sat_mail BY cari_no.
+        DELETE ADJACENT DUPLICATES FROM lt_sat_mail COMPARING cari_no.
+      ENDIF.
 
-        READ TABLE gt_data ASSIGNING FIELD-SYMBOL(<fs_data_sat>)
-                           WITH KEY cari_no = ls_sat_raw-cari_no
-                                    waers   = ls_sat_raw-waers .
-        IF sy-subrc <> 0 .
-          CLEAR gs_data .
-          gs_data-cari_no = ls_sat_raw-cari_no .
-          gs_data-koart   = ls_sat_raw-koart .
-          gs_data-waers   = ls_sat_raw-waers .
-
-          SELECT SINGLE smtp_addr
-            FROM adr6
-            INNER JOIN lfa1 ON lfa1~adrnr = adr6~addrnumber
-            WHERE lfa1~lifnr = @ls_sat_raw-cari_no
-            INTO @gs_data-mail_adres .
-
-          APPEND gs_data TO gt_data .
-
-          READ TABLE gt_data ASSIGNING <fs_data_sat>
-                             WITH KEY cari_no = ls_sat_raw-cari_no
-                                      waers   = ls_sat_raw-waers .
-        ENDIF .
-
-        " Borç/Alacak mantığı
-        IF ls_sat_raw-shkzg = 'S' .
-          <fs_data_sat>-bakiye = <fs_data_sat>-bakiye + ls_sat_raw-dmbtr .
-        ELSE .
-          <fs_data_sat>-bakiye = <fs_data_sat>-bakiye - ls_sat_raw-dmbtr .
-        ENDIF .
-
-      ENDLOOP .
+      LOOP AT lt_sat_bal INTO DATA(ls_sat_bal).
+        CLEAR gs_data.
+        gs_data-cari_no = ls_sat_bal-cari_no.
+        gs_data-koart   = 'K'.
+        gs_data-waers   = ls_sat_bal-waers.
+        gs_data-bakiye  = ls_sat_bal-bakiye.
+        READ TABLE lt_sat_mail INTO DATA(ls_sat_mail) WITH KEY cari_no = ls_sat_bal-cari_no BINARY SEARCH.
+        IF sy-subrc = 0.
+          gs_data-mail_adres = ls_sat_mail-mail_adres.
+        ENDIF.
+        APPEND gs_data TO gt_data.
+      ENDLOOP.
     ENDIF .
 *- end of   -* Satıcı Verilerini Çekme *-
 
@@ -183,6 +219,22 @@ CLASS lcl_report IMPLEMENTATION .
           CATCH cx_salv_not_found .
             " Kolon bulunamazsa program çökmesin, sessizce geçsin
         ENDTRY .
+
+        TRY.
+            DATA(lo_col_bak) = lo_columns->get_column( 'BAKIYE' ).
+            lo_col_bak->set_short_text( 'Bakiye' ).
+            lo_col_bak->set_medium_text( 'Bakiye' ).
+            lo_col_bak->set_long_text( 'Güncel Bakiye' ).
+          CATCH cx_salv_not_found.
+        ENDTRY.
+
+        TRY.
+            DATA(lo_col_wrs) = lo_columns->get_column( 'WAERS' ).
+            lo_col_wrs->set_short_text( 'P.B.' ).
+            lo_col_wrs->set_medium_text( 'Para Birimi' ).
+            lo_col_wrs->set_long_text( 'Para Birimi' ).
+          CATCH cx_salv_not_found.
+        ENDTRY.
         mo_alv->set_screen_status(
           EXPORTING
             report        =  sy-repid                " ABAP Program: Current Master Program
@@ -213,6 +265,26 @@ CLASS lcl_report IMPLEMENTATION .
         return .
       endif .
 
+      if lines( lt_rows ) > p_limit.
+        message s000(su) with |Seçim sayısı ({ lines( lt_rows ) }) üst limiti ({ p_limit }) aşıyor. Lütfen daraltın.| display like 'E'.
+        return.
+      endif.
+
+      data(lv_question) = |Seçili { lines( lt_rows ) } satır için e-posta gönderilecek. Devam edilsin mi?| .
+      call function 'POPUP_TO_CONFIRM'
+        exporting
+          titlebar              = 'Mutabakat Mail Gönderimi'
+          text_question         = lv_question
+          text_button_1         = 'Evet'
+          text_button_2         = 'Hayır'
+          display_cancel_button = abap_true
+        importing
+          answer                = data(lv_answer).
+      if lv_answer <> '1'.
+        message s000(su) with 'İşlem kullanıcı tarafından iptal edildi.'.
+        return.
+      endif.
+
 *- begin of -* Başlık Kaydı Oluşturma *-
       " Her gönderim grubu için benzersiz bir ID oluşturuyoruz (Timestamp usulü)
       data(lv_timestamp) = |{ sy-datum }{ sy-uzeit }| .
@@ -225,71 +297,112 @@ CLASS lcl_report IMPLEMENTATION .
       ls_baslik-monat  = p_monat .
       ls_baslik-erdat  = sy-datum .
       ls_baslik-ernam  = sy-uname .
-      insert zvs_mut_baslik from ls_baslik . " Nüfus kaydı tamam!
+      try.
+          insert zvs_mut_baslik from ls_baslik .
+        catch cx_sy_open_sql_db into data(lx_sql_hdr).
+          message s000(su) with lx_sql_hdr->get_text( ) display like 'E'.
+          return.
+      endtry.
 *- end of   -* Başlık Kaydı Oluşturma *-
 
-      data: lv_sayac type i value 0 .
+      data: lv_sayac_ok type i value 0,
+            lv_sayac_er type i value 0,
+            lv_sayac_no type i value 0.
       loop at lt_rows into data(lv_row) .
         read table gt_data index lv_row into data(ls_selected) .
         if sy-subrc = 0 .
-          me->send_mutabakat_mail( ls_selected ) .
+          data(lv_err_text) = ``.
+          data(lv_success) = me->send_mutabakat_mail(
+                               exporting
+                                 is_data       = ls_selected
+                               importing
+                                 ev_error_text = lv_err_text ).
 
 *- begin of -* Kalem Kaydı Oluşturma *-
           " Gönderilen her maili detay tablosuna yazıyoruz
           data: ls_kalem type zvs_mut_kalem .
           move-corresponding ls_selected to ls_kalem .
           ls_kalem-mut_id = lv_timestamp .
-          ls_kalem-durum  = '1' . " 1: Gönderildi
-          insert zvs_mut_kalem from ls_kalem .
+          if ls_selected-mail_adres is initial.
+            ls_kalem-durum = '3'.
+            lv_sayac_no = lv_sayac_no + 1.
+          elseif lv_success = abap_true.
+            ls_kalem-durum = '1'.
+            lv_sayac_ok = lv_sayac_ok + 1.
+          else.
+            ls_kalem-durum = '2'.
+            lv_sayac_er = lv_sayac_er + 1.
+          endif.
+
+          try.
+              insert zvs_mut_kalem from ls_kalem .
+            catch cx_sy_open_sql_db into data(lx_sql_itm).
+              lv_sayac_er = lv_sayac_er + 1.
+          endtry.
 *- end of   -* Kalem Kaydı Oluşturma *-
 
-          lv_sayac = lv_sayac + 1 .
         endif .
       endloop .
 
-      commit work . " Tüm kayıtları veritabanına mühürle
-      message s000(su) with |İşlem Tamam! { lv_sayac } adet mail atıldı ve veritabanına kaydedildi.| .
+      commit work .
+      message s000(su) with |İşlem tamamlandı. Gönderilen: { lv_sayac_ok }, Hatalı: { lv_sayac_er }, E-Posta yok: { lv_sayac_no }.| .
     endif .
   ENDMETHOD .
 
   METHOD send_mutabakat_mail .
-    CHECK is_data-mail_adres IS NOT INITIAL .
-    DATA(lo_send_request) = cl_bcs=>create_persistent( ) .
-    TRY.
+    clear ev_error_text.
+    rv_success = abap_false.
 
+    if is_data-mail_adres is initial.
+      ev_error_text = 'E-Posta adresi boş.'.
+      return.
+    endif.
 
-    DATA: lt_text TYPE bcsy_text .
-    APPEND 'Sayın İlgili,' TO lt_text .
-    APPEND ' ' TO lt_text .
-    APPEND |Sistemimizdeki güncel bakiyeniz aşağıdaki gibidir:| TO lt_text .
-    APPEND |Tutar: { is_data-bakiye } { is_data-waers }| TO lt_text .
-    APPEND ' ' TO lt_text .
-    APPEND 'Mutabık olmamanız durumunda lütfen tarafımıza dönüş yapınız.' TO lt_text .
-    APPEND 'İyi çalışmalar dileriz.' TO lt_text .
+    try.
+        data(lo_send_request) = cl_bcs=>create_persistent( ) .
 
-    data(lo_document) = cl_document_bcs=>create_document(
-                          i_type         = 'RAW'
-                          i_subject      = 'Bakiye Mutabakat Bildirimi'
-                          i_text         = lt_text ).
-    lo_send_request->set_document( lo_document ) .
+        DATA: lt_text TYPE bcsy_text .
+        APPEND '<html><body style=\"font-family:Arial,Helvetica,sans-serif;font-size:10pt;\">' TO lt_text.
+        APPEND '<p>Sayın İlgili,</p>' TO lt_text.
+        APPEND '<p>Sistemimizdeki güncel bakiyeniz aşağıdaki gibidir:</p>' TO lt_text.
+        APPEND |<p><b>Tutar:</b> { is_data-bakiye } { is_data-waers }</p>| TO lt_text.
+        APPEND |<p><b>Şirket Kodu:</b> { p_bukrs } &nbsp; <b>Dönem:</b> { p_gjahr }/{ p_monat }</p>| TO lt_text.
+        APPEND '<p>Mutabık olmamanız durumunda lütfen tarafımıza dönüş yapınız.</p>' TO lt_text.
+        APPEND '<p>İyi çalışmalar dileriz.</p>' TO lt_text.
+        APPEND '<hr/>' TO lt_text.
+        APPEND |<p style=\"color:#666;\">Bu e-posta otomatik oluşturulmuştur. Referans: { sy-repid } - { sy-datum } { sy-uzeit }</p>| TO lt_text.
+        APPEND '</body></html>' TO lt_text.
+
+        data(lo_document) = cl_document_bcs=>create_document(
+                              i_type         = 'HTM'
+                              i_subject      = p_subj
+                              i_text         = lt_text ).
+        lo_send_request->set_document( lo_document ) .
 
         data(lv_mail) = conv ad_smtpadr( is_data-mail_adres ) .
         data(lo_recipient) = cl_cam_address_bcs=>create_internet_address( lv_mail ) .
         lo_send_request->add_recipient( i_recipient = lo_recipient ) .
 
-        lo_send_request->set_send_immediately( 'X' ) .
-        lo_send_request->send( i_with_error_screen = 'X' ) .
+        lo_send_request->set_send_immediately( p_immed ) .
 
-        commit work .
+        if p_from is not initial.
+          try.
+              data(lo_sender) = cl_cam_address_bcs=>create_internet_address( conv ad_smtpadr( p_from ) ).
+              lo_send_request->set_sender( lo_sender ).
+            catch cx_bcs.
+          endtry.
+        endif.
 
-CATCH cx_bcs INTO DATA(lx_bcs). " <--- Hata olursa buraya düşer
-        DATA(lv_msg) = lx_bcs->get_text( ) .
-        MESSAGE s000(su) WITH lv_msg DISPLAY LIKE 'E' .
-    ENDTRY.
+        data(lv_sent) = lo_send_request->send( i_with_error_screen = abap_false ) .
+        rv_success = cond abap_bool( when lv_sent = abap_true then abap_true else abap_false ).
+        if rv_success = abap_false.
+          ev_error_text = 'Gönderim başarısız.'.
+        endif.
 
-
-
-
+      catch cx_bcs into DATA(lx_bcs).
+        ev_error_text = lx_bcs->get_text( ).
+        rv_success = abap_false.
+    endtry.
   ENDMETHOD.
 ENDCLASS .
 *- end of   -* Class Implementation *-
