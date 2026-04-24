@@ -270,7 +270,9 @@ CLASS lcl_report IMPLEMENTATION .
         return.
       endif.
 
-      data(lv_question) = |Seçili { lines( lt_rows ) } satır için e-posta gönderilecek. Devam edilsin mi?| .
+      data: lv_question type string,
+            lv_answer   type c length 1.
+      lv_question = |Seçili { lines( lt_rows ) } satır için e-posta gönderilecek. Devam edilsin mi?| .
       call function 'POPUP_TO_CONFIRM'
         exporting
           titlebar              = 'Mutabakat Mail Gönderimi'
@@ -279,7 +281,7 @@ CLASS lcl_report IMPLEMENTATION .
           text_button_2         = 'Hayır'
           display_cancel_button = abap_true
         importing
-          answer                = data(lv_answer).
+          answer                = lv_answer.
       if lv_answer <> '1'.
         message s000(su) with 'İşlem kullanıcı tarafından iptal edildi.'.
         return.
@@ -362,7 +364,7 @@ CLASS lcl_report IMPLEMENTATION .
         data(lo_send_request) = cl_bcs=>create_persistent( ) .
 
         DATA: lt_text TYPE bcsy_text .
-        APPEND '<html><body style=\"font-family:Arial,Helvetica,sans-serif;font-size:10pt;\">' TO lt_text.
+        APPEND '<html><body style="font-family:Arial,Helvetica,sans-serif;font-size:10pt;">' TO lt_text.
         APPEND '<p>Sayın İlgili,</p>' TO lt_text.
         APPEND '<p>Sistemimizdeki güncel bakiyeniz aşağıdaki gibidir:</p>' TO lt_text.
         APPEND |<p><b>Tutar:</b> { is_data-bakiye } { is_data-waers }</p>| TO lt_text.
@@ -370,7 +372,7 @@ CLASS lcl_report IMPLEMENTATION .
         APPEND '<p>Mutabık olmamanız durumunda lütfen tarafımıza dönüş yapınız.</p>' TO lt_text.
         APPEND '<p>İyi çalışmalar dileriz.</p>' TO lt_text.
         APPEND '<hr/>' TO lt_text.
-        APPEND |<p style=\"color:#666;\">Bu e-posta otomatik oluşturulmuştur. Referans: { sy-repid } - { sy-datum } { sy-uzeit }</p>| TO lt_text.
+        APPEND |<p style="color:#666;">Bu e-posta otomatik oluşturulmuştur. Referans: { sy-repid } - { sy-datum } { sy-uzeit }</p>| TO lt_text.
         APPEND '</body></html>' TO lt_text.
 
         data(lo_document) = cl_document_bcs=>create_document(
