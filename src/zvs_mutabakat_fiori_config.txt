@@ -1,0 +1,319 @@
+===============================================================================
+ZVS_MUTABAKAT OData Service - Technical Configuration
+===============================================================================
+
+SERVICE DETAILS:
+- Service Name: ZVS_MUTABAKAT_SRV
+- Service Version: 1.0 (OData v2)
+- Service URL: /sap/opu/odata/sap/ZVS_MUTABAKAT_SRV
+- Model: zvs_mutabakat_odata_mpc
+- Data Provider: zvs_mutabakat_odata_dpc
+
+===============================================================================
+ENTITY SETS CONFIGURATION
+===============================================================================
+
+1. BaslikSet (Header Set)
+   ├─ Entity Type: Baslik
+   ├─ Key Property: ID (String)
+   ├─ Properties:
+   │  ├─ ID (Key, String)
+   │  ├─ Mutabakat_Nr (String)
+   │  ├─ Status (String: D/E/O/A)
+   │  ├─ Aciklama (String)
+   │  ├─ Tarih (DateTime)
+   │  └─ Kullanici (String)
+   └─ Navigation: Kalemler (1:N to Kalem)
+
+2. KalemSet (Item Set)
+   ├─ Entity Type: Kalem
+   ├─ Key Property: Kalem_ID (String)
+   ├─ Properties:
+   │  ├─ Kalem_ID (Key, String)
+   │  ├─ ID (String, FK to Baslik)
+   │  ├─ Detay_Aciklamasi (String)
+   │  └─ Satir_Durum (String)
+   └─ Navigation: None
+
+===============================================================================
+CRUD OPERATIONS MAPPING
+===============================================================================
+
+Operation | Entity Set | Method   | URL Pattern
+----------|------------|----------|--------------------------------------------------
+CREATE    | BaslikSet  | POST     | /BaslikSet
+READ      | BaslikSet  | GET      | /BaslikSet or /BaslikSet('ID')
+UPDATE    | BaslikSet  | PUT      | /BaslikSet('ID')
+DELETE    | BaslikSet  | DELETE   | /BaslikSet('ID')
+NAVIGATE  | BaslikSet  | GET      | /BaslikSet('ID')/Kalemler
+
+===============================================================================
+REQUEST/RESPONSE EXAMPLES
+===============================================================================
+
+--- REQUEST 1: GET All Baslik ---
+GET /sap/opu/odata/sap/ZVS_MUTABAKAT_SRV/BaslikSet HTTP/1.1
+Host: sap-server.example.com
+Authorization: Basic <credentials>
+Accept: application/json
+
+--- RESPONSE 1: JSON ---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "d": {
+    "results": [
+      {
+        "ID": "001",
+        "Mutabakat_Nr": "MUT-2026-001",
+        "Status": "D",
+        "Aciklama": "Test Mutabakati",
+        "Tarih": "/Date(1651353600000)/",
+        "Kullanici": "TESTUSER"
+      },
+      {
+        "ID": "002",
+        "Mutabakat_Nr": "MUT-2026-002",
+        "Status": "E",
+        "Aciklama": "Another Entry",
+        "Tarih": "/Date(1651440000000)/",
+        "Kullanici": "USER2"
+      }
+    ]
+  }
+}
+
+--- REQUEST 2: GET Single Baslik ---
+GET /sap/opu/odata/sap/ZVS_MUTABAKAT_SRV/BaslikSet('001') HTTP/1.1
+Host: sap-server.example.com
+Authorization: Basic <credentials>
+Accept: application/json
+
+--- RESPONSE 2: JSON ---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "d": {
+    "ID": "001",
+    "Mutabakat_Nr": "MUT-2026-001",
+    "Status": "D",
+    "Aciklama": "Test Mutabakati",
+    "Tarih": "/Date(1651353600000)/",
+    "Kullanici": "TESTUSER"
+  }
+}
+
+--- REQUEST 3: POST Create Baslik ---
+POST /sap/opu/odata/sap/ZVS_MUTABAKAT_SRV/BaslikSet HTTP/1.1
+Host: sap-server.example.com
+Authorization: Basic <credentials>
+Content-Type: application/json
+
+{
+  "ID": "003",
+  "Mutabakat_Nr": "MUT-2026-003",
+  "Status": "D",
+  "Aciklama": "New Mutabakat Entry",
+  "Kullanici": "NEWUSER"
+}
+
+--- RESPONSE 3: JSON ---
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{
+  "d": {
+    "ID": "003",
+    "Mutabakat_Nr": "MUT-2026-003",
+    "Status": "D",
+    "Aciklama": "New Mutabakat Entry",
+    "Tarih": "/Date(1651526400000)/",
+    "Kullanici": "NEWUSER"
+  }
+}
+
+--- REQUEST 4: PUT Update Baslik ---
+PUT /sap/opu/odata/sap/ZVS_MUTABAKAT_SRV/BaslikSet('001') HTTP/1.1
+Host: sap-server.example.com
+Authorization: Basic <credentials>
+Content-Type: application/json
+
+{
+  "Status": "O",
+  "Aciklama": "Updated Description"
+}
+
+--- RESPONSE 4: JSON ---
+HTTP/1.1 204 No Content
+
+--- REQUEST 5: DELETE Baslik ---
+DELETE /sap/opu/odata/sap/ZVS_MUTABAKAT_SRV/BaslikSet('001') HTTP/1.1
+Host: sap-server.example.com
+Authorization: Basic <credentials>
+
+--- RESPONSE 5 ---
+HTTP/1.1 204 No Content
+
+--- REQUEST 6: GET Navigation Property ---
+GET /sap/opu/odata/sap/ZVS_MUTABAKAT_SRV/BaslikSet('001')/Kalemler HTTP/1.1
+Host: sap-server.example.com
+Authorization: Basic <credentials>
+Accept: application/json
+
+--- RESPONSE 6: JSON ---
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "d": {
+    "results": [
+      {
+        "Kalem_ID": "001001",
+        "ID": "001",
+        "Detay_Aciklamasi": "Item Detail",
+        "Satir_Durum": "O"
+      },
+      {
+        "Kalem_ID": "001002",
+        "ID": "001",
+        "Detay_Aciklamasi": "Another Item",
+        "Satir_Durum": "D"
+      }
+    ]
+  }
+}
+
+===============================================================================
+FILTERING, SORTING, AND PAGINATION
+===============================================================================
+
+--- Filter by Status ---
+GET /BaslikSet?$filter=Status eq 'D' HTTP/1.1
+
+--- Filter with AND ---
+GET /BaslikSet?$filter=Status eq 'D' and Kullanici eq 'TESTUSER' HTTP/1.1
+
+--- Filter with Contains ---
+GET /BaslikSet?$filter=substringof('MUT', Mutabakat_Nr) HTTP/1.1
+
+--- Sort by Tarih ---
+GET /BaslikSet?$orderby=Tarih desc HTTP/1.1
+
+--- Pagination with Skip and Top ---
+GET /BaslikSet?$skip=0&$top=10 HTTP/1.1
+
+--- Projection (Select specific fields) ---
+GET /BaslikSet?$select=ID,Mutabakat_Nr,Status HTTP/1.1
+
+--- Combined Query ---
+GET /BaslikSet?$filter=Status eq 'D'&$orderby=Tarih desc&$top=5&$skip=0 HTTP/1.1
+
+===============================================================================
+ERROR HANDLING
+===============================================================================
+
+HTTP Status Codes:
+- 200 OK: Request successful
+- 201 Created: Resource created successfully
+- 204 No Content: Success (no response body)
+- 400 Bad Request: Invalid request syntax
+- 401 Unauthorized: Authentication required
+- 403 Forbidden: Authorization denied
+- 404 Not Found: Resource not found
+- 500 Internal Server Error: Server error
+- 503 Service Unavailable: Service down
+
+Error Response Example:
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+
+{
+  "error": {
+    "code": "400",
+    "message": "ID field is mandatory",
+    "target": "BaslikSet",
+    "details": []
+  }
+}
+
+===============================================================================
+BATCH REQUEST EXAMPLE
+===============================================================================
+
+POST /sap/opu/odata/sap/ZVS_MUTABAKAT_SRV/$batch HTTP/1.1
+Host: sap-server.example.com
+Authorization: Basic <credentials>
+Content-Type: multipart/mixed; boundary=batch_12345
+
+--batch_12345
+Content-Type: application/http
+Content-Transfer-Encoding: binary
+
+GET /BaslikSet('001') HTTP/1.1
+
+--batch_12345
+Content-Type: application/http
+Content-Transfer-Encoding: binary
+
+POST /BaslikSet HTTP/1.1
+Content-Type: application/json
+
+{"ID":"004","Mutabakat_Nr":"MUT-2026-004","Status":"D"}
+
+--batch_12345--
+
+===============================================================================
+PERFORMANCE OPTIMIZATION TIPS
+===============================================================================
+
+1. Use $select to retrieve only necessary fields
+2. Implement $top/$skip for pagination instead of loading all data
+3. Add $filter to reduce data set size
+4. Avoid deep navigation properties when not needed
+5. Use batch requests for multiple operations
+6. Cache metadata ($metadata) on client side
+7. Enable compression on network level (gzip)
+
+===============================================================================
+TROUBLESHOOTING HTTP STATUS CODES
+===============================================================================
+
+400 - Check JSON syntax and mandatory fields
+401 - Verify credentials and SAP user authentication
+403 - Check user authorization and role assignments
+404 - Verify entity key and entity set name
+500 - Check backend logs (SM37, ST22) for details
+503 - Service might be under maintenance or overloaded
+
+===============================================================================
+SUPPORTED CONTENT TYPES
+===============================================================================
+
+Requests:
+- application/json
+- application/atom+xml
+
+Responses:
+- application/json (OData v2 preferred)
+- application/atom+xml
+- text/xml
+
+Accept Headers:
+- Accept: application/json
+- Accept: application/atom+xml
+
+===============================================================================
+VERSION HISTORY
+===============================================================================
+
+Version 1.0 (2026-04-27):
+- Initial OData service creation
+- BaslikSet and KalemSet entity sets
+- CRUD operations implemented
+- Navigation properties (1:N)
+- Helper class for validation and logging
+- Fiori integration ready
+
+===============================================================================
