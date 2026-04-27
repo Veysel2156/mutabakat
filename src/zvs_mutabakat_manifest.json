@@ -1,0 +1,152 @@
+{
+  "_version": "1.1.0",
+  "sap.app": {
+    "id": "com.zvs.mutabakat.fiori",
+    "version": "1.0.0",
+    "type": "application",
+    "i18n": "i18n/i18n.properties",
+    "applicationVersion": {
+      "version": "1.0.0"
+    },
+    "title": "{{appTitle}}",
+    "description": "{{appDescription}}",
+    "resources": {
+      "css": [
+        {
+          "uri": "css/style.css"
+        }
+      ]
+    },
+    "dataSources": {
+      "mainService": {
+        "uri": "/sap/opu/odata/sap/ZVS_MUTABAKAT_SRV/",
+        "type": "OData",
+        "settings": {
+          "odataVersion": "2.0",
+          "localUri": "model/metadata.xml"
+        }
+      }
+    },
+    "offline": false,
+    "sourceTemplate": {
+      "id": "ui5template.basicSAPUI5ApplicationProject",
+      "version": "1.0.0"
+    }
+  },
+  "sap.ui": {
+    "technology": "UI5",
+    "icons": {
+      "icon": "sap-icon://activate",
+      "favIcon": "",
+      "phone": "",
+      "phoneHighRes": "",
+      "tablet": "",
+      "tabletHighRes": ""
+    },
+    "deviceTypes": {
+      "desktop": true,
+      "tablet": true,
+      "phone": true
+    },
+    "supportedThemes": [
+      "sap_belize",
+      "sap_belize_plus",
+      "sap_fiori_3",
+      "sap_fiori_3_dark"
+    ]
+  },
+  "sap.ui5": {
+    "rootView": {
+      "viewName": "com.zvs.mutabakat.fiori.view.App",
+      "type": "XML",
+      "async": true,
+      "id": "app"
+    },
+    "dependencies": {
+      "minUI5Version": "1.84.0",
+      "libs": {
+        "sap.ui.core": {},
+        "sap.ui.layout": {},
+        "sap.m": {},
+        "sap.f": {}
+      }
+    },
+    "contentDensities": {
+      "compact": true,
+      "cozy": true
+    },
+    "models": {
+      "i18n": {
+        "type": "sap.ui.model.resource.ResourceModel",
+        "settings": {
+          "bundleName": "com.zvs.mutabakat.fiori.i18n.i18n"
+        }
+      },
+      "": {
+        "type": "sap.ui.model.odata.v2.ODataModel",
+        "dataSource": "mainService",
+        "preload": true,
+        "settings": {
+          "defaultBindingMode": "TwoWay",
+          "defaultCountMode": "Request",
+          "refreshAfterChange": true,
+          "metadataUrlParams": {
+            "sap-language": "EN"
+          }
+        }
+      }
+    },
+    "routing": {
+      "config": {
+        "routerClass": "sap.ui.core.routing.Router",
+        "viewType": "XML",
+        "async": true,
+        "viewPath": "com.zvs.mutabakat.fiori.view",
+        "controlAggregation": "pages",
+        "controlId": "app",
+        "clearControlAggregation": false,
+        "bypassed": {
+          "target": "notfound"
+        }
+      },
+      "routes": [
+        {
+          "pattern": "",
+          "name": "master",
+          "target": "master"
+        },
+        {
+          "pattern": "detail/{id}",
+          "name": "detail",
+          "target": "detail"
+        },
+        {
+          "pattern": "notfound",
+          "name": "notfound",
+          "target": "notfound"
+        }
+      ],
+      "targets": {
+        "master": {
+          "viewName": "Master",
+          "viewLevel": 1,
+          "preload": true
+        },
+        "detail": {
+          "viewName": "Detail",
+          "viewLevel": 2,
+          "preload": true
+        },
+        "notfound": {
+          "viewName": "NotFound",
+          "viewLevel": 3,
+          "preload": true
+        }
+      }
+    },
+    "resourceRoots": {}
+  },
+  "sap.platform.hcp": {
+    "uri": ""
+  }
+}
